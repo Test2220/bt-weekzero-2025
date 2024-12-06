@@ -68,8 +68,8 @@ type Arena struct {
 	CurrentMatch                      *model.Match
 	MatchStartTime                    time.Time
 	LastMatchTimeSec                  float64
-	RedRealtimeScore                  *RealtimeScore
-	BlueRealtimeScore                 *RealtimeScore
+	RedScore                  *game.Score
+	BlueScore                 *game.Score
 	lastDsPacketTime                  time.Time
 	lastPeriodicTaskTime              time.Time
 	EventStatus                       EventStatus
@@ -195,10 +195,10 @@ func (arena *Arena) LoadSettings() error {
 	game.UpdateMatchSounds()
 	arena.MatchTimingNotifier.Notify()
 
-	game.MelodyBonusThresholdWithoutCoop = settings.MelodyBonusThresholdWithoutCoop
-	game.MelodyBonusThresholdWithCoop = settings.MelodyBonusThresholdWithCoop
-	game.AmplificationNoteLimit = settings.AmplificationNoteLimit
-	game.AmplificationDurationSec = settings.AmplificationDurationSec
+	// game.MelodyBonusThresholdWithoutCoop = settings.MelodyBonusThresholdWithoutCoop
+	// game.MelodyBonusThresholdWithCoop = settings.MelodyBonusThresholdWithCoop
+	// game.AmplificationNoteLimit = settings.AmplificationNoteLimit
+	// game.AmplificationDurationSec = settings.AmplificationDurationSec
 
 	// Reconstruct the playoff tournament in memory.
 	if err = arena.CreatePlayoffTournament(); err != nil {
@@ -305,8 +305,8 @@ func (arena *Arena) LoadMatch(match *model.Match) error {
 
 	// Reset the arena state and realtime scores.
 	arena.soundsPlayed = make(map[*game.MatchSound]struct{})
-	arena.RedRealtimeScore = NewRealtimeScore()
-	arena.BlueRealtimeScore = NewRealtimeScore()
+	arena.RedScore = new(game.Score)
+	arena.BlueScore = new(game.Score)
 	arena.ScoringPanelRegistry.resetScoreCommitted()
 	arena.Plc.ResetMatch()
 
@@ -692,12 +692,12 @@ func (arena *Arena) Run() {
 
 // Calculates the red alliance score summary for the given realtime snapshot.
 func (arena *Arena) RedScoreSummary() *game.ScoreSummary {
-	return arena.RedRealtimeScore.CurrentScore.Summarize(&arena.BlueRealtimeScore.CurrentScore)
+	return arena.RedScore.Summarize()
 }
 
 // Calculates the blue alliance score summary for the given realtime snapshot.
 func (arena *Arena) BlueScoreSummary() *game.ScoreSummary {
-	return arena.BlueRealtimeScore.CurrentScore.Summarize(&arena.RedRealtimeScore.CurrentScore)
+	return arena.BlueScore.Summarize()
 }
 
 // Checks that the given teams are present in the database, allowing team ID 0 which indicates an empty spot.
@@ -944,22 +944,22 @@ func (arena *Arena) handlePlcInputOutput() {
 	arena.AllianceStations["B2"].Ethernet = blueEthernets[1]
 	arena.AllianceStations["B3"].Ethernet = blueEthernets[2]
 
-	// Handle in-match PLC functions.
-	redScore := &arena.RedRealtimeScore.CurrentScore
-	oldRedScore := *redScore
-	oldRedAmplifiedTimeRemainingSec := arena.RedRealtimeScore.AmplifiedTimeRemainingSec
-	blueScore := &arena.BlueRealtimeScore.CurrentScore
-	oldBlueScore := *blueScore
-	oldBlueAmplifiedTimeRemainingSec := arena.BlueRealtimeScore.AmplifiedTimeRemainingSec
-	matchStartTime := arena.MatchStartTime
-	currentTime := time.Now()
-	teleopGracePeriod := matchStartTime.Add(
-		game.GetDurationToTeleopEnd() + game.SpeakerTeleopGracePeriodSec*time.Second,
-	)
-	inGracePeriod := arena.MatchState == PostMatch && currentTime.Before(teleopGracePeriod) && !arena.matchAborted
+	// // Handle in-match PLC functions.
+	// redScore := &arena.RedRealtimeScore.CurrentScore
+	// oldRedScore := *redScore
+	// oldRedAmplifiedTimeRemainingSec := arena.RedRealtimeScore.AmplifiedTimeRemainingSec
+	// blueScore := &arena.BlueRealtimeScore.CurrentScore
+	// oldBlueScore := *blueScore
+	// oldBlueAmplifiedTimeRemainingSec := arena.BlueRealtimeScore.AmplifiedTimeRemainingSec
+	// matchStartTime := arena.MatchStartTime
+	// currentTime := time.Now()
+	// teleopGracePeriod := matchStartTime.Add(
+	// 	game.GetDurationToTeleopEnd() + game.SpeakerTeleopGracePeriodSec*time.Second,
+	// )
+	// inGracePeriod := arena.MatchState == PostMatch && currentTime.Before(teleopGracePeriod) && !arena.matchAborted
 
-	redAllianceReady := arena.checkAllianceStationsReady("R1", "R2", "R3") == nil
-	blueAllianceReady := arena.checkAllianceStationsReady("B1", "B2", "B3") == nil
+	// redAllianceReady := arena.checkAllianceStationsReady("R1", "R2", "R3") == nil
+	// blueAllianceReady := arena.checkAllianceStationsReady("B1", "B2", "B3") == nil
 
 	// Handle the evergreen PLC functions: stack lights, stack buzzer, and field reset light.
 	switch arena.MatchState {
@@ -973,6 +973,8 @@ func (arena *Arena) handlePlcInputOutput() {
 	case PostTimeout:
 		// Set the stack light state -- solid alliance color(s) if robots are not connected, solid orange if scores are
 		// not input, or blinking green if ready.
+		redAllianceReady := arena.checkAllianceStationsReady("R1", "R2", "R3") == nil
+		blueAllianceReady := arena.checkAllianceStationsReady("B1", "B2", "B3") == nil
 		greenStackLight := redAllianceReady && blueAllianceReady && arena.Plc.GetCycleState(2, 0, 2)
 		arena.Plc.SetStackLights(!redAllianceReady, !blueAllianceReady, false, greenStackLight)
 		arena.Plc.SetStackBuzzer(redAllianceReady && blueAllianceReady)
@@ -989,94 +991,94 @@ func (arena *Arena) handlePlcInputOutput() {
 		if arena.FieldReset {
 			arena.Plc.SetFieldResetLight(true)
 		}
-		scoreReady := arena.RedRealtimeScore.FoulsCommitted && arena.BlueRealtimeScore.FoulsCommitted &&
-			arena.alliancePostMatchScoreReady("red") && arena.alliancePostMatchScoreReady("blue")
-		arena.Plc.SetStackLights(false, false, !scoreReady, false)
+		// scoreReady := arena.RedScore.FoulsCommitted && arena.BlueScore.FoulsCommitted &&
+		// 	arena.alliancePostMatchScoreReady("red") && arena.alliancePostMatchScoreReady("blue")
+		arena.Plc.SetStackLights(false, false, false, false)
 	case AutoPeriod, PausePeriod, TeleopPeriod:
 		arena.Plc.SetStackBuzzer(false)
-		arena.Plc.SetStackLights(!redAllianceReady, !blueAllianceReady, false, true)
+		arena.Plc.SetStackLights(false, false, false, false)
 	}
 
 	// Get all the game-specific inputs and update the score.
-	redAmplifyButton, redCoopButton, blueAmplifyButton, blueCoopButton := arena.Plc.GetAmpButtons()
-	var redAmpNoteCount, redSpeakerNoteCount, blueAmpNoteCount, blueSpeakerNoteCount int
-	if arena.MatchState != PreMatch {
+	// redAmplifyButton, redCoopButton, blueAmplifyButton, blueCoopButton := arena.Plc.GetAmpButtons()
+	// var redAmpNoteCount, redSpeakerNoteCount, blueAmpNoteCount, blueSpeakerNoteCount int
+	// if arena.MatchState != PreMatch {
 		// Don't read the registers pre-match to avoid messing up the amp/speaker state from any manual testing.
-		redAmpNoteCount, redSpeakerNoteCount, blueAmpNoteCount, blueSpeakerNoteCount =
-			arena.Plc.GetAmpSpeakerNoteCounts()
-	}
-	redAmpSpeaker := &arena.RedRealtimeScore.CurrentScore.AmpSpeaker
-	blueAmpSpeaker := &arena.BlueRealtimeScore.CurrentScore.AmpSpeaker
-	redAmpSpeaker.UpdateState(
-		redAmpNoteCount,
-		redSpeakerNoteCount,
-		redAmplifyButton,
-		redCoopButton,
-		matchStartTime,
-		currentTime,
-		arena.CurrentMatch.Type == model.Playoff,
-	)
-	blueAmpSpeaker.UpdateState(
-		blueAmpNoteCount,
-		blueSpeakerNoteCount,
-		blueAmplifyButton,
-		blueCoopButton,
-		matchStartTime,
-		currentTime,
-		arena.CurrentMatch.Type == model.Playoff,
-	)
-	redAmplifiedTimeRemaining := redAmpSpeaker.AmplifiedTimeRemaining(currentTime)
-	arena.RedRealtimeScore.AmplifiedTimeRemainingSec = int(math.Ceil(redAmplifiedTimeRemaining))
-	blueAmplifiedTimeRemaining := blueAmpSpeaker.AmplifiedTimeRemaining(currentTime)
-	arena.BlueRealtimeScore.AmplifiedTimeRemainingSec = int(math.Ceil(blueAmplifiedTimeRemaining))
-	if !oldRedScore.Equals(redScore) || !oldBlueScore.Equals(blueScore) ||
-		oldRedAmplifiedTimeRemainingSec != arena.RedRealtimeScore.AmplifiedTimeRemainingSec ||
-		oldBlueAmplifiedTimeRemainingSec != arena.BlueRealtimeScore.AmplifiedTimeRemainingSec {
-		arena.RealtimeScoreNotifier.Notify()
-	}
+		// redAmpNoteCount, redSpeakerNoteCount, blueAmpNoteCount, blueSpeakerNoteCount =
+	// 		arena.Plc.GetAmpSpeakerNoteCounts()
+	// }
+	// redAmpSpeaker := &arena.RedRealtimeScore.CurrentScore.AmpSpeaker
+	// blueAmpSpeaker := &arena.BlueRealtimeScore.CurrentScore.AmpSpeaker
+	// redAmpSpeaker.UpdateState(
+	// 	redAmpNoteCount,
+	// 	redSpeakerNoteCount,
+	// 	redAmplifyButton,
+	// 	redCoopButton,
+	// 	matchStartTime,
+	// 	currentTime,
+	// 	arena.CurrentMatch.Type == model.Playoff,
+	// )
+	// blueAmpSpeaker.UpdateState(
+	// 	blueAmpNoteCount,
+	// 	blueSpeakerNoteCount,
+	// 	blueAmplifyButton,
+	// 	blueCoopButton,
+	// 	matchStartTime,
+	// 	currentTime,
+	// 	arena.CurrentMatch.Type == model.Playoff,
+	// )
+	// redAmplifiedTimeRemaining := redAmpSpeaker.AmplifiedTimeRemaining(currentTime)
+	// arena.RedRealtimeScore.AmplifiedTimeRemainingSec = int(math.Ceil(redAmplifiedTimeRemaining))
+	// blueAmplifiedTimeRemaining := blueAmpSpeaker.AmplifiedTimeRemaining(currentTime)
+	// arena.BlueRealtimeScore.AmplifiedTimeRemainingSec = int(math.Ceil(blueAmplifiedTimeRemaining))
+	// if !oldRedScore.Equals(redScore) || !oldBlueScore.Equals(blueScore) ||
+	// 	oldRedAmplifiedTimeRemainingSec != arena.RedRealtimeScore.AmplifiedTimeRemainingSec ||
+	// 	oldBlueAmplifiedTimeRemainingSec != arena.BlueRealtimeScore.AmplifiedTimeRemainingSec {
+	// 	arena.RealtimeScoreNotifier.Notify()
+	// }
 
 	// Handle the amp outputs.
-	if arena.MatchState == AutoPeriod || arena.MatchState == PausePeriod || arena.MatchState == TeleopPeriod {
-		redLowAmpLight := redAmpSpeaker.BankedAmpNotes >= 1
-		redHighAmpLight := redAmpSpeaker.BankedAmpNotes >= 2
-		redCoopAmpLight := redAmpSpeaker.CoopActivated
-		if redAmplifiedTimeRemaining > 0 {
-			redLowAmpLight = int(redAmplifiedTimeRemaining*4)%2 == 0
-			redHighAmpLight = !redLowAmpLight
-		}
+	// if arena.MatchState == AutoPeriod || arena.MatchState == PausePeriod || arena.MatchState == TeleopPeriod {
+	// 	redLowAmpLight := redAmpSpeaker.BankedAmpNotes >= 1
+	// 	redHighAmpLight := redAmpSpeaker.BankedAmpNotes >= 2
+	// 	redCoopAmpLight := redAmpSpeaker.CoopActivated
+	// 	if redAmplifiedTimeRemaining > 0 {
+	// 		redLowAmpLight = int(redAmplifiedTimeRemaining*4)%2 == 0
+	// 		redHighAmpLight = !redLowAmpLight
+	// 	}
 
-		blueLowAmpLight := blueAmpSpeaker.BankedAmpNotes >= 1
-		blueHighAmpLight := blueAmpSpeaker.BankedAmpNotes >= 2
-		blueCoopAmpLight := blueAmpSpeaker.CoopActivated
-		if blueAmplifiedTimeRemaining > 0 {
-			blueLowAmpLight = int(blueAmplifiedTimeRemaining*4)%2 == 0
-			blueHighAmpLight = !blueLowAmpLight
-		}
+	// 	blueLowAmpLight := blueAmpSpeaker.BankedAmpNotes >= 1
+	// 	blueHighAmpLight := blueAmpSpeaker.BankedAmpNotes >= 2
+	// 	blueCoopAmpLight := blueAmpSpeaker.CoopActivated
+	// 	if blueAmplifiedTimeRemaining > 0 {
+	// 		blueLowAmpLight = int(blueAmplifiedTimeRemaining*4)%2 == 0
+	// 		blueHighAmpLight = !blueLowAmpLight
+	// 	}
 
-		arena.Plc.SetAmpLights(
-			redLowAmpLight, redHighAmpLight, redCoopAmpLight, blueLowAmpLight, blueHighAmpLight, blueCoopAmpLight,
-		)
-	} else if arena.MatchState == PostMatch {
-		arena.Plc.SetAmpLights(false, false, false, false, false, false)
-	}
+	// 	arena.Plc.SetAmpLights(
+	// 		redLowAmpLight, redHighAmpLight, redCoopAmpLight, blueLowAmpLight, blueHighAmpLight, blueCoopAmpLight,
+	// 	)
+	// } else if arena.MatchState == PostMatch {
+	// 	arena.Plc.SetAmpLights(false, false, false, false, false, false)
+	// }
 
 	// Handle the speaker outputs.
-	arena.Plc.SetSpeakerMotors(
-		arena.MatchState == AutoPeriod || arena.MatchState == PausePeriod || arena.MatchState == TeleopPeriod ||
-			inGracePeriod,
-	)
-	arena.Plc.SetSpeakerLights(
-		redAmplifiedTimeRemaining > 0 && arena.MatchState != PostMatch,
-		blueAmplifiedTimeRemaining > 0 && arena.MatchState != PostMatch,
-	)
+// 	arena.Plc.SetSpeakerMotors(
+// 		arena.MatchState == AutoPeriod || arena.MatchState == PausePeriod || arena.MatchState == TeleopPeriod ||
+// 			inGracePeriod,
+// 	)
+// 	arena.Plc.SetSpeakerLights(
+// 		redAmplifiedTimeRemaining > 0 && arena.MatchState != PostMatch,
+// 		blueAmplifiedTimeRemaining > 0 && arena.MatchState != PostMatch,
+// 	)
 
-	// Handle the subwoofer outputs.
-	arena.Plc.SetSubwooferCountdown(
-		redAmplifiedTimeRemaining > 0 && arena.MatchState != PostMatch,
-		blueAmplifiedTimeRemaining > 0 && arena.MatchState != PostMatch,
-	)
-	arena.Plc.SetPostMatchSubwooferLights(inGracePeriod)
-}
+// 	// Handle the subwoofer outputs.
+// 	arena.Plc.SetSubwooferCountdown(
+// 		redAmplifiedTimeRemaining > 0 && arena.MatchState != PostMatch,
+// 		blueAmplifiedTimeRemaining > 0 && arena.MatchState != PostMatch,
+// 	)
+// 	arena.Plc.SetPostMatchSubwooferLights(inGracePeriod)
+// }
 
 func (arena *Arena) handleTeamStop(station string, eStopState, aStopState bool) {
 	allianceStation := arena.AllianceStations[station]

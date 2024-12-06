@@ -376,7 +376,7 @@ func (web *Web) commitMatchScore(match *model.Match, matchResult *model.MatchRes
 	match.ScoreCommittedAt = time.Now()
 	redScoreSummary := matchResult.RedScoreSummary()
 	blueScoreSummary := matchResult.BlueScoreSummary()
-	match.Status = game.DetermineMatchStatus(redScoreSummary, blueScoreSummary, match.UseTiebreakCriteria)
+	match.Status = game.DetermineMatchStatus(redScoreSummary, blueScoreSummary)
 
 	if match.Type != model.Test {
 		if matchResult.PlayNumber == 0 {
@@ -489,8 +489,8 @@ func (web *Web) commitMatchScore(match *model.Match, matchResult *model.MatchRes
 
 func (web *Web) getCurrentMatchResult() *model.MatchResult {
 	return &model.MatchResult{MatchId: web.arena.CurrentMatch.Id, MatchType: web.arena.CurrentMatch.Type,
-		RedScore: &web.arena.RedRealtimeScore.CurrentScore, BlueScore: &web.arena.BlueRealtimeScore.CurrentScore,
-		RedCards: web.arena.RedRealtimeScore.Cards, BlueCards: web.arena.BlueRealtimeScore.Cards}
+		RedScore: &web.arena.RedScore.CurrentScore, BlueScore: &web.arena.BlueRealtimeScore.CurrentScore,
+		RedCards: web.arena.RedScore.Cards, BlueCards: web.arena.BlueRealtimeScore.Cards}
 }
 
 // Saves the realtime result as the final score for the match currently loaded into the arena.

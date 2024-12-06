@@ -61,7 +61,7 @@ func (arena *Arena) configureNotifiers() {
 	arena.RealtimeScoreNotifier = websocket.NewNotifier("realtimeScore", arena.generateRealtimeScoreMessage)
 	arena.ReloadDisplaysNotifier = websocket.NewNotifier("reload", nil)
 	arena.ScorePostedNotifier = websocket.NewNotifier("scorePosted", arena.GenerateScorePostedMessage)
-	arena.ScoringStatusNotifier = websocket.NewNotifier("scoringStatus", arena.generateScoringStatusMessage)
+	// arena.ScoringStatusNotifier = websocket.NewNotifier("scoringStatus", arena.generateScoringStatusMessage)
 }
 
 func (arena *Arena) generateAllianceSelectionMessage() any {
@@ -211,10 +211,10 @@ func (arena *Arena) generateRealtimeScoreMessage() any {
 		BlueCards map[string]string
 		MatchState
 	}{
-		getAudienceAllianceScoreFields(arena.RedRealtimeScore, arena.RedScoreSummary()),
-		getAudienceAllianceScoreFields(arena.BlueRealtimeScore, arena.BlueScoreSummary()),
-		arena.RedRealtimeScore.Cards,
-		arena.BlueRealtimeScore.Cards,
+		getAudienceAllianceScoreFields(arena.RedScore, arena.RedScoreSummary()),
+		getAudienceAllianceScoreFields(arena.BlueScore, arena.BlueScoreSummary()),
+		arena.RedScore.Cards,
+		arena.BlueScore.Cards,
 		arena.MatchState,
 	}
 	return &fields
@@ -223,16 +223,16 @@ func (arena *Arena) generateRealtimeScoreMessage() any {
 func (arena *Arena) GenerateScorePostedMessage() any {
 	redScoreSummary := arena.SavedMatchResult.RedScoreSummary()
 	blueScoreSummary := arena.SavedMatchResult.BlueScoreSummary()
-	redRankingPoints := redScoreSummary.BonusRankingPoints
-	blueRankingPoints := blueScoreSummary.BonusRankingPoints
+	// redRankingPoints := redScoreSummary.BonusRankingPoints
+	// blueRankingPoints := blueScoreSummary.BonusRankingPoints
 	switch arena.SavedMatch.Status {
 	case game.RedWonMatch:
-		redRankingPoints += 2
+		// redRankingPoints += 2
 	case game.BlueWonMatch:
-		blueRankingPoints += 2
+		// blueRankingPoints += 2
 	case game.TieMatch:
-		redRankingPoints++
-		blueRankingPoints++
+		// redRankingPoints++
+		// blueRankingPoints++
 	}
 
 	// For playoff matches, summarize the state of the series.
@@ -291,10 +291,10 @@ func (arena *Arena) GenerateScorePostedMessage() any {
 		arena.SavedMatch,
 		redScoreSummary,
 		blueScoreSummary,
-		redRankingPoints,
-		blueRankingPoints,
-		arena.SavedMatchResult.RedScore.Fouls,
-		arena.SavedMatchResult.BlueScore.Fouls,
+		// redRankingPoints,
+		// blueRankingPoints,
+		// arena.SavedMatchResult.RedScore.Fouls,
+		// arena.SavedMatchResult.BlueScore.Fouls,
 		getRulesViolated(arena.SavedMatchResult.RedScore.Fouls, arena.SavedMatchResult.BlueScore.Fouls),
 		arena.SavedMatchResult.RedCards,
 		arena.SavedMatchResult.BlueCards,
@@ -311,20 +311,21 @@ func (arena *Arena) GenerateScorePostedMessage() any {
 	}
 }
 
-func (arena *Arena) generateScoringStatusMessage() any {
-	return &struct {
-		RefereeScoreReady         bool
-		RedScoreReady             bool
-		BlueScoreReady            bool
-		NumRedScoringPanels       int
-		NumRedScoringPanelsReady  int
-		NumBlueScoringPanels      int
-		NumBlueScoringPanelsReady int
-	}{arena.RedRealtimeScore.FoulsCommitted && arena.BlueRealtimeScore.FoulsCommitted,
-		arena.alliancePostMatchScoreReady("red"), arena.alliancePostMatchScoreReady("blue"),
-		arena.ScoringPanelRegistry.GetNumPanels("red"), arena.ScoringPanelRegistry.GetNumScoreCommitted("red"),
-		arena.ScoringPanelRegistry.GetNumPanels("blue"), arena.ScoringPanelRegistry.GetNumScoreCommitted("blue")}
-}
+// func (arena *Arena) generateScoringStatusMessage() any {
+// 	return &struct {
+// 		RefereeScoreReady         bool
+// 		RedScoreReady             bool
+// 		BlueScoreReady            bool
+// 		NumRedScoringPanels       int
+// 		NumRedScoringPanelsReady  int
+// 		NumBlueScoringPanels      int
+// 		NumBlueScoringPanelsReady int
+// 	}{
+// 		// arena.RedScore.FoulsCommitted && arena.BlueRealtimeScore.FoulsCommitted,
+// 		arena.alliancePostMatchScoreReady("red"), arena.alliancePostMatchScoreReady("blue"),
+// 		arena.ScoringPanelRegistry.GetNumPanels("red"), arena.ScoringPanelRegistry.GetNumScoreCommitted("red"),
+// 		arena.ScoringPanelRegistry.GetNumPanels("blue"), arena.ScoringPanelRegistry.GetNumScoreCommitted("blue")}
+// }
 
 // Constructs the data object for one alliance sent to the audience display for the realtime scoring overlay.
 func getAudienceAllianceScoreFields(allianceScore *RealtimeScore,
